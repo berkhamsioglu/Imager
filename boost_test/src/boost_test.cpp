@@ -29,16 +29,112 @@
 using namespace boost::filesystem;
 using namespace boost::asio;
 
-
+//struct directory_settings
+//{
+//    boost::filesystem::path const& source;
+//    boost::filesystem::path const& destination;
+////    std::string m_file;               // log filename
+////    int m_level;                      // debug level
+////    std::set<std::string> m_modules;  // modules where logging is enabled
+////    void load(const std::string &filename);
+////    void save(const std::string &filename);
+//};
 //using namespace boost::thread;
 //namespace asio = boost::asio;
 
-int sleep_print(int seconds) {
-	std::cout << "Going to sleep (" << seconds << ")" << std::endl;
-	sleep(seconds);
-	std::cout << "wake up (" << seconds << ")" << std::endl;
-	return 0;
+//int sleep_print(int seconds) {
+//	std::cout << "Going to sleep (" << seconds << ")" << std::endl;
+//	sleep(seconds);
+//	std::cout << "wake up (" << seconds << ")" << std::endl;
+//	return 0;
+//}
+bool copyDir(
+		//directory_settings dir_set
+	    boost::filesystem::path const & source,
+	    boost::filesystem::path const & destination
+)
+{
+//    boost::filesystem::path const & source = dir_set.source;
+//    boost::filesystem::path const & destination = dir_set.destination;
+
+    namespace fs = boost::filesystem;
+    try
+    {
+        // Check whether the function call is valid
+        if(
+            !fs::exists(source) ||
+            !fs::is_directory(source)
+        )
+        {
+            std::cerr << "Source directory " << source.string()
+                << " does not exist or is not a directory." << '\n'
+            ;
+            return false;
+        }
+        if(fs::exists(destination))
+        {
+            std::cerr << "Destination directory " << destination.string()
+                << " already exists." << '\n'
+            ;
+            return false;
+        }
+        // Create the destination directory
+        if(!fs::create_directory(destination))
+        {
+            std::cerr << "Unable to create destination directory"
+                << destination.string() << '\n'
+            ;
+            return false;
+        }
+    }
+    catch(fs::filesystem_error const & e)
+    {
+        std::cerr << e.what() << '\n';
+        return false;
+    }
+    // Iterate through the source directory
+    for(
+        fs::directory_iterator file(source);
+        file != fs::directory_iterator(); ++file
+    )
+    {
+        try
+        {
+            fs::path current(file->path());
+            if(fs::is_directory(current))
+            {
+                // Found directory: Recursion
+//            	directory_settings ds;
+//            	ds.source = current;
+//            	ds.destination = destination / current.filename();
+                if(
+
+                    !copyDir(
+                        current,
+                        destination / current.filename()
+                    )
+                )
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                // Found file: Copy
+                fs::copy_file(
+                    current,
+                    destination / current.filename()
+                );
+            }
+        }
+        catch(fs::filesystem_error const & e)
+        {
+            std:: cerr << e.what() << '\n';
+        }
+    }
+    return true;
 }
+
 int my_task(int num)
 {
 	std::string out;
@@ -56,13 +152,14 @@ int my_task(int num)
 	return 0;
 }
 
-typedef boost::packaged_task<int> task_t;
+typedef boost::packaged_task<bool> task_t;
 typedef boost::shared_ptr<task_t> ptask_t;
 
 
-void push_job(int seconds, boost::asio::io_service& io_service, std::vector<boost::shared_future<int> >& pending_data) {
-	ptask_t task = boost::make_shared<task_t>(boost::bind(&my_task, seconds));
-	boost::shared_future<int> fut(task->get_future());
+void push_job(	    boost::filesystem::path const & source,
+	    boost::filesystem::path const & destination, int seconds, boost::asio::io_service& io_service, std::vector<boost::shared_future<bool> >& pending_data) {
+	ptask_t task = boost::make_shared<task_t>(boost::bind(&copyDir, source, destination));
+	boost::shared_future<bool> fut(task->get_future());
 	pending_data.push_back(fut);
 	io_service.post(boost::bind(&task_t::operator(), task));
 }
@@ -77,7 +174,7 @@ int main() {
 	boost::thread_group threads;
 	boost::asio::io_service::work work(io_service);
 	//boost::thread::hardware_concurrency()
-	for (int i = 0; i < 14 ; ++i)
+	for (int i = 0; i < 3 ; ++i)
 	{
 		threads.create_thread(boost::bind(static_cast<std::size_t(boost::asio::io_service::*)(void)>(&boost::asio::io_service::run),
 			&io_service));
@@ -85,7 +182,7 @@ int main() {
 //		threads.create_thread(boost::bind(&boost::asio::io_service::run,
 //			&io_service));
 	}
-	std::vector<boost::shared_future<int> > pending_data; // vector of futures
+	std::vector<boost::shared_future<bool> > pending_data; // vector of futures
 
 	//my_task(2);
 	//push_job(3, io_service, pending_data);
@@ -94,20 +191,27 @@ int main() {
 //	boost::thread task(boost::move(pt)); // launch task on a thread
 
 	//boost::wait_for_all(pending_data.begin(), pending_data.end());
-	push_job(1, io_service, pending_data);
-	push_job(2, io_service, pending_data);
-	push_job(3, io_service, pending_data);
-	push_job(4, io_service, pending_data);
-	push_job(5, io_service, pending_data);
-	push_job(6, io_service, pending_data);
-	push_job(7, io_service, pending_data);
-	push_job(8, io_service, pending_data);
-	push_job(9, io_service, pending_data);
-	push_job(10, io_service, pending_data);
-	push_job(11, io_service, pending_data);
-	push_job(12, io_service, pending_data);
-	push_job(13, io_service, pending_data);
-	push_job(14, io_service, pending_data);
+//	directory_settings ds1, ds2, ds3;
+//	ds1.source = boost::filesystem::path("/home/bbma/testworkspace/TestImage/104APPLE");
+//	ds1.destination = boost::filesystem::path("/home/bbma/testworkspace/TestImage/104APPLE2");
+//	ds2.source = boost::filesystem::path("/home/bbma/testworkspace/TestImage/105APPLE");
+//	ds2.destination = boost::filesystem::path("/home/bbma/testworkspace/TestImage/105APPLE2");
+//	ds3.source = boost::filesystem::path("/home/bbma/testworkspace/TestImage/106APPLE");
+//	ds3.destination = boost::filesystem::path("/home/bbma/testworkspace/TestImage/106APPLE2");
+	push_job(boost::filesystem::path("/home/bbma/testworkspace/TestImage/104APPLE"),boost::filesystem::path("/home/bbma/testworkspace/TestImage/104APPLE2"),1, io_service, pending_data);
+	push_job(boost::filesystem::path("/home/bbma/testworkspace/TestImage/105APPLE"),boost::filesystem::path("/home/bbma/testworkspace/TestImage/105APPLE2"),1, io_service, pending_data);
+	push_job(boost::filesystem::path("/home/bbma/testworkspace/TestImage/106APPLE"),boost::filesystem::path("/home/bbma/testworkspace/TestImage/106APPLE2"),1, io_service, pending_data);
+//	push_job(4, io_service, pending_data);
+//	push_job(5, io_service, pending_data);
+//	push_job(6, io_service, pending_data);
+//	push_job(7, io_service, pending_data);
+//	push_job(8, io_service, pending_data);
+//	push_job(9, io_service, pending_data);
+//	push_job(10, io_service, pending_data);
+//	push_job(11, io_service, pending_data);
+//	push_job(12, io_service, pending_data);
+//	push_job(13, io_service, pending_data);
+//	push_job(14, io_service, pending_data);
 	boost::wait_for_all(pending_data.begin(), pending_data.end());
 
 	return 0;
