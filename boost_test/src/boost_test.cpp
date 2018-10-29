@@ -25,6 +25,7 @@
 #include <cstring>
 #include <stdlib.h>
 #include <sstream>
+#include <sched.h>   //cpu_set_t , CPU_SET
 #include "LogCombiner.h"
 using namespace boost::filesystem;
 using namespace boost::asio;
@@ -51,11 +52,31 @@ using namespace boost::asio;
 bool copyDir(
 		//directory_settings dir_set
 	    boost::filesystem::path const & source,
-	    boost::filesystem::path const & destination
+	    boost::filesystem::path const & destination,
+		int cpu
 )
 {
 //    boost::filesystem::path const & source = dir_set.source;
 //    boost::filesystem::path const & destination = dir_set.destination;
+
+	//we can set one or more bits here, each one representing a single CPU
+	cpu_set_t cpuset;
+
+	//the CPU we whant to use
+	//int cpu = 2;
+
+	CPU_ZERO(&cpuset);       //clears the cpuset
+	CPU_SET( cpu , &cpuset); //set CPU 2 on cpuset
+
+
+	/*
+	 * cpu affinity for the calling thread
+	 * first parameter is the pid, 0 = calling thread
+	 * second parameter is the size of your cpuset
+	 * third param is the cpuset in which your thread will be
+	 * placed. Each bit represents a CPU
+	 */
+	sched_setaffinity(0, sizeof(cpuset), &cpuset);
 
     namespace fs = boost::filesystem;
     try
@@ -111,7 +132,7 @@ bool copyDir(
 
                     !copyDir(
                         current,
-                        destination / current.filename()
+                        destination / current.filename(),cpu
                     )
                 )
                 {
@@ -157,8 +178,8 @@ typedef boost::shared_ptr<task_t> ptask_t;
 
 
 void push_job(	    boost::filesystem::path const & source,
-	    boost::filesystem::path const & destination, int seconds, boost::asio::io_service& io_service, std::vector<boost::shared_future<bool> >& pending_data) {
-	ptask_t task = boost::make_shared<task_t>(boost::bind(&copyDir, source, destination));
+	    boost::filesystem::path const & destination, int cpu, boost::asio::io_service& io_service, std::vector<boost::shared_future<bool> >& pending_data) {
+	ptask_t task = boost::make_shared<task_t>(boost::bind(&copyDir, source, destination,cpu));
 	boost::shared_future<bool> fut(task->get_future());
 	pending_data.push_back(fut);
 	io_service.post(boost::bind(&task_t::operator(), task));
@@ -198,9 +219,9 @@ int main() {
 //	ds2.destination = boost::filesystem::path("/home/bbma/testworkspace/TestImage/105APPLE2");
 //	ds3.source = boost::filesystem::path("/home/bbma/testworkspace/TestImage/106APPLE");
 //	ds3.destination = boost::filesystem::path("/home/bbma/testworkspace/TestImage/106APPLE2");
-	push_job(boost::filesystem::path("/home/bbma/testworkspace/TestImage/104APPLE"),boost::filesystem::path("/home/bbma/testworkspace/TestImage/104APPLE2"),1, io_service, pending_data);
-	push_job(boost::filesystem::path("/home/bbma/testworkspace/TestImage/105APPLE"),boost::filesystem::path("/home/bbma/testworkspace/TestImage/105APPLE2"),1, io_service, pending_data);
-	push_job(boost::filesystem::path("/home/bbma/testworkspace/TestImage/106APPLE"),boost::filesystem::path("/home/bbma/testworkspace/TestImage/106APPLE2"),1, io_service, pending_data);
+	push_job(boost::filesystem::path("/home/bbma/testworkspace/TestImage/104APPLE"),boost::filesystem::path("/home/bbma/testworkspace/TestImage/104APPLE2"),3, io_service, pending_data);
+	push_job(boost::filesystem::path("/home/bbma/testworkspace/TestImage/105APPLE"),boost::filesystem::path("/home/bbma/testworkspace/TestImage/105APPLE2"),3, io_service, pending_data);
+	push_job(boost::filesystem::path("/home/bbma/testworkspace/TestImage/106APPLE"),boost::filesystem::path("/home/bbma/testworkspace/TestImage/106APPLE2"),3, io_service, pending_data);
 //	push_job(4, io_service, pending_data);
 //	push_job(5, io_service, pending_data);
 //	push_job(6, io_service, pending_data);
